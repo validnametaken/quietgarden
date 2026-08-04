@@ -37,17 +37,22 @@ input[type="range"]{width:200px;vertical-align:middle;min-height:44px}
 <h2 id="gardenName" style="text-align:center;margin:4px 0;">Seed</h2>
 <div id="message" style="text-align:center;font-weight:bold;color:#2c7a2c;font-size:18px">Let's grow the garden!</div>
 
+<div class="card" style="background:linear-gradient(135deg, #e3f6e3, #d4edda);border:2px solid #68b85f;text-align:center;padding:20px;margin-top:15px;">
+  <h3 style="margin:0 0 6px 0;color:#2c7a2c;font-size:20px;">🔥 Current Quiet Streak</h3>
+  <div id="prominentStreak" style="font-size:48px;font-weight:bold;color:#234;">0s</div>
+</div>
+
 <div class="grid">
 <div class="card" style="display:flex;flex-direction:column;justify-content:center;">
-<h3>Noise Level</h3>
-<div id="face">😀</div>
-<div id="db">0 dB</div>
+<h3>Noise Level <span id="audioStatus" class="badge" style="font-size:12px;margin:0 0 0 10px;">Mic: Inactive</span></h3>
+<div id="face" role="img" aria-label="Mood Indicator">😀</div>
+<div id="db" aria-live="polite">0 dB</div>
 <canvas id="noiseChart" width="300" height="100" style="width:100%; height:100px; background:#f0f0f0; border-radius:10px;"></canvas>
-<div class="meter"><div id="noiseFill" class="fill"></div></div>
+<div class="meter" role="meter" aria-label="Noise Level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="noiseFill" class="fill"></div></div>
 </div>
 <div class="card">
 <h3>Patience Meter (Danger Zone)</h3>
-<div class="meter"><div id="budgetFill" class="fill"></div></div>
+<div class="meter" role="meter" aria-label="Patience Meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="budgetFill" class="fill"></div></div>
 <div id="cooldown" style="color:#e74c3c;font-weight:bold;margin-top:10px;text-align:center"></div>
 </div>
 
@@ -121,14 +126,21 @@ const levels = [
   [410, "🦋", "Paradise"]
 ];
 
-let state = JSON.parse(localStorage.getItem(SAVE) || '{"score":0,"achievements":[]}');
+let savedState = {};
+try { savedState = JSON.parse(localStorage.getItem(SAVE) || '{}'); } catch(e) {}
+let state = {
+  score: savedState.score || 0,
+  achievements: savedState.achievements || [],
+  hasOwl: !!savedState.hasOwl
+};
 let ctx;
 let analyser;
 let running = false;
 let sm = 0;
 let budget = 0;
-let quiet = 0;
-let alarms = 0;
+let quiet = savedState.quiet || 0;
+let alarms = savedState.alarms || 0;
+let wasOverThreshold = false;
 let cool = 0;
 let lastTime = 0;
 let lastFrameTime = 0;
@@ -142,6 +154,8 @@ function msg(text) {
 }
 
 function save() {
+  state.quiet = quiet;
+  state.alarms = alarms;
   localStorage.setItem(SAVE, JSON.stringify(state));
 }
 
@@ -236,7 +250,11 @@ function render(force = false) {
   if (state.score >= 450) animalsText += "🐦 ";
   if (state.score >= 700) animalsText += "🦔 ";
   if (state.score >= 1000) animalsText += "🐿️ ";
-  if (Math.random() < 0.002) animalsText += "🦉 ";
+  if (!state.hasOwl && Math.random() < 0.002) {
+    state.hasOwl = true;
+    save();
+  }
+  if (state.hasOwl) animalsText += "🦉 ";
   if (animals && (force || animalsText !== lastRenderData.animals)) {
     animals.textContent = animalsText;
     lastRenderData.animals = animalsText;
@@ -358,21 +376,50 @@ function loop(timestamp) {
     lastRenderData.mood = newMood;
   }
 
-  if (sm < thresholdValue) {
+  const audioStatusEl = getStoredElement("audioStatus");
+  if (audioStatusEl) {
+    if (running && ctx && ctx.state === 'running') {
+      audioStatusEl.textContent = "Mic: Active 🟢";
+      audioStatusEl.classList.add("active");
+    } else {
+      audioStatusEl.textContent = "Mic: Paused ⏸️";
+      audioStatusEl.classList.remove("active");
+    }
+  }
+
+  if (sm >= thresholdValue) {
+    if (!wasOverThreshold) {
+      playTone(280, 'triangle', 0.15);
+      wasOverThreshold = true;
+    }
+    budget = Math.min(100, budget + (sm - thresholdValue) * ENGINE.drainRate);
+    currentStreakSeconds = 0;
+  } else {
+    wasOverThreshold = false;
     budget = Math.max(0, budget - 0.25);
     quiet += deltaTime;
     currentStreakSeconds += deltaTime;
-  } else {
-    budget = Math.min(100, budget + (sm - thresholdValue) * ENGINE.drainRate);
-    currentStreakSeconds = 0;
   }
 
   const streakRound = Math.round(currentStreakSeconds);
   const streakEl = getStoredElement("currentStreak");
   if (streakEl && lastRenderData.streak !== streakRound) {
-    streakEl.textContent = streakRound < 60 ? `${streakRound}s` : `${Math.floor(streakRound / 60)}m ${streakRound % 60}s`;
+    const streakText = streakRound < 60 ? `${streakRound}s` : `${Math.floor(streakRound / 60)}m ${streakRound % 60}s`;
+    streakEl.textContent = streakText;
     lastRenderData.streak = streakRound;
   }
+
+  const prominentStreakEl = getStoredElement("prominentStreak");
+  if (prominentStreakEl && lastRenderData.prominentStreak !== streakRound) {
+    const streakText = streakRound < 60 ? `${streakRound}s` : `${Math.floor(streakRound / 60)}m ${streakRound % 60}s`;
+    prominentStreakEl.textContent = streakText;
+    lastRenderData.prominentStreak = streakRound;
+  }
+
+  const noiseMeterEl = document.querySelector('[role="meter"][aria-label="Noise Level"]');
+  if (noiseMeterEl) noiseMeterEl.setAttribute("aria-valuenow", Math.round(sm));
+  const budgetMeterEl = document.querySelector('[role="meter"][aria-label="Patience Meter"]');
+  if (budgetMeterEl) budgetMeterEl.setAttribute("aria-valuenow", Math.round(budget));
 
   ACHIEVEMENT_REGISTRY.forEach(ach => {
     if (Math.floor(quiet / 60) >= ach.mins) {
