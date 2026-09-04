@@ -145,6 +145,7 @@ let cool = 0;
 let lastTime = 0;
 let lastFrameTime = 0;
 let currentStreakSeconds = 0;
+let recentSpikes = [];
 let trend = [];
 const lastRenderData = {};
 
@@ -372,6 +373,7 @@ function resetGame() {
   alarms = 0;
   budget = 0;
   currentStreakSeconds = 0;
+  recentSpikes = [];
   cool = 0;
   state = { score: 0, achievements: [] };
   save();
@@ -469,6 +471,20 @@ function loop(timestamp) {
     if (!wasOverThreshold) {
       playTone(280, 'triangle', 0.15);
       wasOverThreshold = true;
+
+      const now = Date.now();
+      recentSpikes.push(now);
+      recentSpikes = recentSpikes.filter(t => now - t <= 10000);
+
+      if (recentSpikes.length >= 5 && cool <= 0) {
+        alarms++;
+        state.score = Math.max(0, state.score - 5);
+        cool = ENGINE.penaltyCooldown;
+        msg("🐿️ Startled Squirrel!");
+        playTone(180, 'sawtooth', 0.4);
+        save();
+        recentSpikes = [];
+      }
     }
     budget = Math.min(100, budget + (sm - thresholdValue) * ENGINE.drainRate);
     currentStreakSeconds = 0;
