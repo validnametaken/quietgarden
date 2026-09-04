@@ -162,6 +162,9 @@ function save() {
 function playTone(freq, type, duration) {
   if (!ctx) return;
   try {
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
     const osc = ctx.createOscillator();
     const gainNode = ctx.createGain();
     osc.type = type;
@@ -348,11 +351,13 @@ function render(force = false) {
 
 async function initAudio() {
   try {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    ctx = new AudioContext();
-    ctx.onstatechange = () => {
-      if (ctx.state === 'suspended') ctx.resume();
-    };
     analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(analyser);
@@ -566,6 +571,12 @@ window.addEventListener('DOMContentLoaded', () => {
       requestAnimationFrame(loop);
     }
   };
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  });
 
   if (calibrateButton) calibrateButton.onclick = async () => {
     if (!ctx) await initAudio();
