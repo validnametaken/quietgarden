@@ -169,7 +169,7 @@ function playTone(freq, type, duration) {
     const gainNode = ctx.createGain();
     osc.type = type;
     osc.frequency.value = freq;
-    gainNode.gain.setValueAtTime(0.08, ctx.currentTime);
+    gainNode.gain.setValueAtTime(1.0, ctx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
     osc.connect(gainNode);
     gainNode.connect(ctx.destination);
