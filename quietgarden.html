@@ -50,11 +50,7 @@ input[type="range"]{width:200px;vertical-align:middle;min-height:44px}
 <canvas id="noiseChart" width="300" height="100" style="width:100%; height:100px; background:#f0f0f0; border-radius:10px;"></canvas>
 <div class="meter" role="meter" aria-label="Noise Level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="noiseFill" class="fill"></div></div>
 </div>
-<div class="card">
-<h3>Patience Meter (Danger Zone)</h3>
-<div class="meter" role="meter" aria-label="Patience Meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="budgetFill" class="fill"></div></div>
-<div id="cooldown" style="color:#e74c3c;font-weight:bold;margin-top:10px;text-align:center"></div>
-</div>
+
 
 <div class="grid">
 <div class="card">
@@ -87,10 +83,7 @@ input[type="range"]{width:200px;vertical-align:middle;min-height:44px}
   <span class="config-label">Microphone Smoothing:</span>
   <input id="cfgSmoothing" type="range" min="50" max="99" value="85"> <span id="sval" class="badge">0.85</span>
 </div>
-<div>
-  <span class="config-label">Patience Drain Rate:</span>
-  <input id="cfgDrain" type="range" min="1" max="50" value="8"> <span id="dval" class="badge">0.008</span>
-</div>
+
 <br>
 <div style="display:flex;flex-wrap:wrap;gap:10px;">
   <button id="start">Start Monitoring</button>
@@ -344,10 +337,7 @@ function render(force = false) {
     lastRenderData.season = seasonText;
   }
 
-  if (force || Math.round(budget) !== lastRenderData.budget) {
-    document.body.style.background = budget >= 80 ? "#fce8e6" : budget >= 40 ? "#fff9e6" : "#eef8ef";
-    lastRenderData.budget = Math.round(budget);
-  }
+
 }
 
 async function initAudio() {
@@ -371,7 +361,6 @@ async function initAudio() {
 function resetGame() {
   quiet = 0;
   alarms = 0;
-  budget = 0;
   currentStreakSeconds = 0;
   recentSpikes = [];
   cool = 0;
@@ -486,11 +475,9 @@ function loop(timestamp) {
         recentSpikes = [];
       }
     }
-    budget = Math.min(100, budget + (sm - thresholdValue) * ENGINE.drainRate);
     currentStreakSeconds = 0;
   } else {
     wasOverThreshold = false;
-    budget = Math.max(0, budget - 0.25);
     quiet += deltaTime;
     currentStreakSeconds += deltaTime;
   }
@@ -512,23 +499,12 @@ function loop(timestamp) {
 
   const noiseMeterEl = document.querySelector('[role="meter"][aria-label="Noise Level"]');
   if (noiseMeterEl) noiseMeterEl.setAttribute("aria-valuenow", Math.round(sm));
-  const budgetMeterEl = document.querySelector('[role="meter"][aria-label="Patience Meter"]');
-  if (budgetMeterEl) budgetMeterEl.setAttribute("aria-valuenow", Math.round(budget));
 
   ACHIEVEMENT_REGISTRY.forEach(ach => {
     if (Math.floor(quiet / 60) >= ach.mins) {
       award(ach.name, ach.pts);
     }
   });
-
-  if (budget >= 100 && cool <= 0) {
-    alarms++;
-    state.score = Math.max(0, state.score - 5);
-    cool = ENGINE.penaltyCooldown;
-    msg("🐿️ Startled Squirrel!");
-    playTone(180, 'sawtooth', 0.4);
-    save();
-  }
 
   if (cool > 0) {
     const cooldownEl = getStoredElement("cooldown");
